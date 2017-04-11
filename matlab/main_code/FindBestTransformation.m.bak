@@ -1,0 +1,237 @@
+function [bestConfig,bestTransMat,sampledError] = ...
+        FindBestTransformation(I1,I2,bounds,steps,epsilon,delta,photometricInvariance,templateMask)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% verify input image types
+if ( ~strcmp(class(I1),'double') || ~strcmp(class(I2),'double')) %#ok<STISA>
+    error('FastMatch: I1 and I2 should both be of class ''double'' (in the range [0,1])');
+end
+
+if ((size(templateMask,1) ~= size(I1,1)) || (size(templateMask,2) ~= size(I1,2)) )
+    error('FastMatch: Template mask not same size as template');
+end
+
+%% smooth here
+blur_sigma = 2;
+blur_size = 4 * blur_sigma;
+params.blur_kernel  = fspecial('gaussian', blur_size, blur_sigma);
+
+I1 = imfilter(I1,params.blur_kernel,'symmetric');
+I2 = imfilter(I2,params.blur_kernel,'symmetric');
+
+[h1,w1] = size(I1);
+
+%% generate Theta(1/eps^2) random points (and fresh ones each iteration later on)
+numPoints = round(10/epsilon^2);
+%xs = randi(w1,[1,numPoints]);
+%ys = randi(h1,[1,numPoints]);
+[xs, ys] = getPixelSample(templateMask, numPoints);
+
+%% generate the Net
+[configs,gridSize] = CreateListOfConfigs(bounds,steps);
+
+if (size(configs,1) > 71000000)
+        error('more than 35 million configs!');
+end
+
+% track number of 'good configs'
+goodConfigsStats = [];
+
+
+%% main loop
+
+deltaFact = 1.511;
+level = 0;
+bestDists = [];
+bestGridVec = [];
+newDelta = delta;
+totTime = 0;
+while (1)
+        level = level + 1;
+        
+        [h2,w2] = size(I2);
+        
+        r1x = 0.5*(w1-1);
+        r1y = 0.5*(h1-1);
+        r2x = 0.5*(w2-1);
+        r2y = 0.5*(h2-1);
+        
+        % 1] translate config vectors to matrix form
+        Configs2AffineMEX = tic;
+        fprintf('----- Configs2Affine, with %d configs -----\n',size(configs,1));
+        [matrixConfigs_mex, insiders] = ...
+                Configs2Affine_mex(configs',int32(h1), int32(w1), int32(h2), int32(w2), int32(r1x), int32(r1y), int32(r2x), int32(r2y));
+        
+        inBoundaryInds = find(insiders);
+        matrixConfigs_mex = matrixConfigs_mex(:,inBoundaryInds);
+        origNumConfigs = size(configs,1);
+        
+        configs = configs(inBoundaryInds,:);
+        Configs2Affine_mex_time = toc(Configs2AffineMEX);
+        
+        % 2] evaluate all configurations
+        EvaluateConfigsMEX = tic;
+        
+        distances = EvaluateConfigs_mex(I1',I2',matrixConfigs_mex,int32(xs),int32(ys),int32(photometricInvariance));
+        fprintf('----- Evaluate Configs, with %d configs -----\n',size(configs,1));
+        EvaluateConfigs_mex_time = toc(EvaluateConfigsMEX);
+        
+        totTime = totTime + Configs2Affine_mex_time + EvaluateConfigs_mex_time;
+        
+        [bestDist,ind] = min(distances);
+        bestConfig = configs(ind,:);
+        bestTransMat = CreateAffineTransformation(configs(ind,:));        
+        
+        bestDists(level) = bestDist; %#ok<AGROW>
+                        
+        
+        if (exist('goodConfigs','var'))
+            goodConfigsStats = size(goodConfigs,1);
+        end
+        
+        
+        fprintf('$$$ bestDist = %.3f\n',bestDist);
+        if ( (bestDist < 0.005) || ((level > 2) && (bestDist < 0.015)) || (level >= 20) || ...
+                ((level > 3) && (bestDist > mean(bestDists(level-3:level-1))*0.97)) || ...
+                ((level > 8) && (goodConfigsStats(end) > 20 ) ) )
+            break
+        end
+        
+        
+        % 5] choose the 'surviving' configs and delta for next round
+
+        [thresh,goodConfigs,tooHighPercentage] = GetGoodConfigsByDistance(configs,bestDist,newDelta,distances,bestGridVec);
+        
+        
+        numConfigs = size(goodConfigs,1);
+        
+        
+        % 6] debug: visualize on histogram
+        
+        
+        % 7] expand 'surviving' configs for next round
+        if ((tooHighPercentage && (bestDist > 0.05) && ((level==1) && (origNumConfigs < 7.5*10^6)) ) || ...
+            (                     (bestDist > 0.1) && ((level==1) && (origNumConfigs < 5*10^6)) ) )
+                fact = 0.9;
+                fprintf('##### RESTARTING!!! changing from delta: %.3f, to delta: %.3f\n', newDelta, newDelta*fact);
+                newDelta = newDelta*fact;
+                level = 0;
+                steps.tx = fact*steps.tx;
+                steps.ty = fact*steps.ty;
+                steps.r = fact*steps.r;
+                steps.s = fact*steps.s;
+                [configs,gridSize] = CreateListOfConfigs(bounds,steps);
+        else
+                prevDelta = newDelta;
+                newDelta = newDelta/deltaFact;
+                fprintf('##### CONTINUING!!! prevDelta = %.3f,  newDelta = %.3f \n',prevDelta,newDelta);
+                
+                % expand the good configs
+                expandType = 'randomExpansion'; %  'fullExpansion'; %  'deltaGrid'; %
+                switch expandType
+                        case 'randomExpansion'
+                                expandedConfigs = ExpandConfigsRandom(goodConfigs,steps,level,80,deltaFact);
+                        case 'fullExpansion'
+                                expandedConfigs = ExpandConfigsFull(goodConfigs,steps,level,deltaFact);
+                end
+                configs = [goodConfigs ; expandedConfigs];
+        end
+        
+        
+        %     configs = unique(configs,'rows'); % REMOVED THIS - IT IS WORTHWHILE
+        
+        fprintf('***\n');
+        fprintf('*** level %d:|goodConfigs| = %d, |expandedConfigs| = %d\n',level,numConfigs,size(configs,1));
+        fprintf('***\n');
+        
+        
+        % 8] refresh random points
+        %xs = randi(w1,[1,numPoints]);
+        %ys = randi(h1,[1,numPoints]);
+        [xs, ys] = getPixelSample(templateMask, numPoints);
+end
+
+
+%% for output
+sampledError = bestDist;
+
+return
+
+
+
+function reduced = ReduceBy(steps,currFactor)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+reduced.tx = steps.tx/currFactor;
+reduced.ty = steps.ty/currFactor;
+reduced.s = steps.s/currFactor;
+reduced.r = steps.r/currFactor;
+
+
+
+function [res,i] = IsMemberApprox(A,row,err)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+res = 0;
+for i = 1 : size(A,1)
+        if (norm(A(i,:)-row) < err)
+                res = 1;
+                return
+        end
+end
+
+
+function [thresh,goodConfigs,tooHighPercentage,extremelyHighPercentage] = GetGoodConfigsByDistance(configs,bestDist,newDelta,distances,bestGridVec)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% targetNum = 20000;
+% thresh = bestDist + newDelta/3;
+thresh = bestDist + GetThreshPerDelta(newDelta);
+goodConfigs = configs(distances <= thresh, :); % bestDist + levelPrecision,:);
+numConfigs = size(goodConfigs,1);
+percentage = numConfigs/size(configs,1)
+while (numConfigs > 27000)
+        thresh = thresh * 0.99;
+        goodConfigs = configs(distances <= thresh, :); % bestDist + levelPrecision,:);
+        numConfigs = size(goodConfigs,1);
+end
+
+if (isempty(goodConfigs))
+         thresh = min(distances);
+        goodConfigs = configs(distances <= thresh, :); % bestDist + levelPrecision,:);
+        if (size(goodConfigs,1)>10000)
+                inds = find(distances <= thresh);
+                goodConfigs = configs(inds(1:100), :); % all with the same error exactly - probably equivalent
+        end                
+end  
+
+% newDelta = newDelta*0.9;
+% if (numConfigs > (5*10^6)/80)
+%     tooHighPercentage = 14
+% end
+     
+tooHighPercentage = (percentage > 0.022);
+extremelyHighPercentage = (percentage > 0.9);
+
+% while (numConfigs*3^6 > 10000000) % round(10000000/(3^6)) = ~14000
+%     thresh = 0.95*thresh;
+%     goodConfigs = configs(distances <= thresh, :); % bestDist + levelPrecision,:);
+%     numConfigs = size(goodConfigs,1);
+% end
+if (~isempty(bestGridVec))
+        [exists,bestGridInd] = IsMemberApprox(goodConfigs,bestGridVec,1000*eps);
+        if (~exists)
+                disp('problem with configs');
+        end
+end
+% while (numConfigs > targetNum)
+%     targetNum = taorgetNum *2;
+% end
+% targetNum = numConfigs*(old/new)^6 (this is in the case that the points are dense)
+% newDelta = ((numConfigs*newDelta^6)/targetNum)^(1/6);
+
+function [xs, ys] = getPixelSample(mask, numPoints)
+locs = find(mask);
+ind = randi(length(locs), [1,numPoints]);
+[ys,xs] = ind2sub(size(mask),locs(ind));
+ys = ys';
+xs = xs';
+
+
