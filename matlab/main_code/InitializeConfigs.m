@@ -112,5 +112,5 @@ configs(:,1:2) = txty_steps(configs(:,2), :); % ÕâŞÏŞÎµÄindexing...
 % end
 % for r1_ind = 1:nr_steps
 %     configs((r1_ind-1)*r1_interval + 1:r1_jump:r1_ind*r1_interval, 6) = r1_steps(r1_ind);
-% end
+% end 
 end
