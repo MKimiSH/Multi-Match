@@ -33,7 +33,7 @@ maxTy = min(searchRange.maxTy,r2y-r1y*minScale);
 
 %% parametrize the initial grid
 [bounds,steps] = GenerateGrid(szT(2),szT(1),delta,minTx,maxTx,minTy,maxTy,minRotation,maxRotation,minScale,maxScale);
-inlierRatio = nnz(mask)/numel(mask);
+inlierRatio = nnz(mask)/numel(mask)
 % steps.tx = steps.tx * sqrt(inlierRatio);
 % steps.ty = steps.ty * sqrt(inlierRatio);
 

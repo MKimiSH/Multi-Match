@@ -27,6 +27,6 @@ if(maxBBS < threshold)
 end
 
 mask = BBS > threshold;
-str = strel('disk',3); % 我也不知道要不要dilate
+str = strel('disk',2); % 我也不知道要不要dilate
 mask = imdilate(mask, str);
 end

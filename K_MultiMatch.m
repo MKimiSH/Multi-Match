@@ -37,6 +37,7 @@ matchRound = 1;
 fprintf('First match:\n');
 [A, score, config, accept] = FindOneMatch(img, tpl, M, initConfigs, matchParams);
 config
+fprintf('Match #%d score (distance) = %.4f\n\n', matchRound, score);
 % A is not a matrix, it is a struct!
 if accept == 0
     fprintf('First match score (%.4f) too low, halt!\n', score);
@@ -50,13 +51,13 @@ end
 %% 5. Set _M(A1(T))=0_ and search for the 2nd match, and so on.
 curAccept = 1;
 matchRound = matchRound + 1;
-while(curAccept && matchRound<=3)
+while(curAccept && matchRound<=8)
     fprintf('Match #%d:\n', matchRound);
-    matchRound = matchRound + 1;
     [M, initConfigs] = MaskNewMatch(M, tpl, initConfigs, A);
     [A, score, config, accept] = FindOneMatch(img, tpl, M, initConfigs, matchParams, scores); % scores can be used as threshold
-    config
     curAccept = accept;
+    config
+    fprintf('Match #%d score (distance) = %.4f\n\n', matchRound, score);
     if(~curAccept)
         fprintf('Stop at match #%d!\n', matchRound);
     else
@@ -64,6 +65,7 @@ while(curAccept && matchRound<=3)
         scores = [scores, score];
         matchConfigs = [matchConfigs; config];
     end
+    matchRound = matchRound + 1;
 end
 
 %% 6. Output the result.
