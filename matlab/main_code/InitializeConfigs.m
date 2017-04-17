@@ -1,14 +1,16 @@
-function [configs] = InitializeConfigs(mask, params, szI, szT)
+function [configs, gridSize, params] = InitializeConfigs(mask, params, szI, szT)
 % Generate initial configs for searching
 % _configs_: tx, ty, r2, sx, sy, r1 (like FastMatch)
+% 傻了，人家是以图像中心(r2x, r2y)为原点的
+% tpl也是以tpl中心为原点的
 
 %% init searchRange
 searchRange = params.searchRange;
 resizeFactor = params.resizeFactor;
-r1x = 0.5*(szI(2)-1);
-r1y = 0.5*(szI(1)-1);
-r2x = 0.5*(szT(2)-1);
-r2y = 0.5*(szT(1)-1);
+r1x = 0.5*(szT(2)-1);
+r1y = 0.5*(szT(1)-1);
+r2x = 0.5*(szI(2)-1);
+r2y = 0.5*(szI(1)-1);
 if ~isfield(searchRange,'minScale'), searchRange.minScale = 0.5 * resizeFactor; end
 if ~isfield(searchRange,'maxScale'), searchRange.maxScale = 2 * resizeFactor; end
 if ~isfield(searchRange,'minRotation'), searchRange.minRotation = -pi; end
@@ -19,6 +21,7 @@ if ~isfield(searchRange,'minTy'), searchRange.minTy = -(r2y-r1y*searchRange.minS
 if ~isfield(searchRange,'maxTy'), searchRange.maxTy = r2y-r1y*searchRange.minScale; end
 
 % copy params
+delta = params.delta;
 minScale = searchRange.minScale;
 maxScale = searchRange.maxScale;
 minRotation = searchRange.minRotation;
@@ -29,10 +32,14 @@ minTy = max(searchRange.minTy,-(r2y-r1y*minScale));
 maxTy = min(searchRange.maxTy,r2y-r1y*minScale);
 
 %% parametrize the initial grid
-[bounds,steps] = GenerateGrid(w1,h1,delta,minTx,maxTx,minTy,maxTy,minRotation,maxRotation,minScale,maxScale);
+[bounds,steps] = GenerateGrid(szT(2),szT(1),delta,minTx,maxTx,minTy,maxTy,minRotation,maxRotation,minScale,maxScale);
 inlierRatio = nnz(mask)/numel(mask);
-steps.tx = steps.tx / sqrt(inlierRatio);
-steps.ty = steps.ty / sqrt(inlierRatio);
+% steps.tx = steps.tx * sqrt(inlierRatio);
+% steps.ty = steps.ty * sqrt(inlierRatio);
+
+params.searchRange = searchRange;
+params.bounds = bounds;
+params.steps = steps;
 
 %% use _mask_ to restrict _tx_ and _ty_
 
@@ -46,10 +53,18 @@ txtymask = zeros(nty_steps, ntx_steps);
 % [txgrid, tygrid] = meshgrid(tx_steps, ty_steps);
 % txgrid = round(txgrid);
 % tygrid = round(tygrid);
+
+mv_tx_steps = tx_steps + r2x; % move to center
+mv_ty_steps = ty_steps + r2y;
+
+tyWithinArea = mv_ty_steps>0.5 & mv_ty_steps<=szI(1);
+txWithinArea = mv_tx_steps>0.5 & mv_tx_steps<=szI(2);
 for i = 1:nty_steps
-    for j = 1:ntx_steps
-        if mask(round(ty_steps(i)), round(tx_steps(j)))
-            txtymask(i,j) = 1;
+    if tyWithinArea(i)
+        for j = 1:ntx_steps
+            if txWithinArea(j) && mask(round(mv_ty_steps(i)), round(mv_tx_steps(j)))
+                txtymask(i,j) = 1;
+            end
         end
     end
 end
@@ -80,7 +95,7 @@ gridSize = ntxty_steps*(ns_steps^2)*(nr_steps*NR2_steps);
 configs = zeros(gridSize, 6);
 
 % MATLAB 好强啊！
-[T, R2, SX, SY, R1] = ndgrid(1:ntxty_steps, r_steps(quartile1_r_steps), s_steps, s_steps, r_steps);
+[T, R2, SX, SY, R1] = ndgrid(1:ntxty_steps, quartile1_r_steps, s_steps, s_steps, r_steps);
 configs(:,2:6) = [T(:), R2(:), SX(:), SY(:), R1(:)];
 configs(:,1:2) = txty_steps(configs(:,2), :); % 这尴尬的indexing...
 

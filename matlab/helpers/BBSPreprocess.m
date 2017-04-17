@@ -6,7 +6,8 @@ function [mask] = BBSPreprocess(img, tpl, params)
 [th, th, ~] = size(tpl);
 szI = size(img);
 szT = size(tpl);
-
+gamma = params.gamma;
+pz = params.pz;
 
 %% calculate BBS
 tic;
@@ -17,9 +18,9 @@ t = toc;
 fprintf('BBS computed in %.2f sec (|I| = %dx%d , |T| = %dx%d)\n',t,szI(1:2),szT(1:2));
 
 %% thresholding BBS value for a mask
-meanBBS = mean(BBS(:));
-stdBBS = std(BBS(:));
-maxBBS = max(BBS(:));
+meanBBS = mean(BBS(:), 'omitnan');
+stdBBS = std(BBS(:), 'omitnan');
+maxBBS = max(BBS(:), [], 'omitnan');
 threshold = meanBBS + 1.5*stdBBS;
 if(maxBBS < threshold)
     threshold = threshold - 0.5*stdBBS;
