@@ -41,7 +41,7 @@ end
 
 %% generate Theta(1/eps^2) random points (and fresh ones each iteration later on)
 numPoints = round(10/epsilon^2);
-[xs, ys] = getPixelSample(templateMask, numPoints); %改
+[xs, ys] = getPixelSamplePatch(templateMask, numPoints); %改
 
 %% generate the Net
 % [configs,gridSize] = CreateListOfConfigs(bounds,steps); %已经有了
@@ -206,7 +206,7 @@ while (1)
         
         
         % 8] refresh random points
-        [xs, ys] = getPixelSample(templateMask, numPoints);
+        [xs, ys] = getPixelSamplePatch(templateMask, numPoints);
 end
 
 %% debug error
@@ -292,12 +292,33 @@ if (~isempty(bestGridVec))
 end
 end
 
-
 function [xs, ys] = getPixelSample(mask, numPoints)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 locs = find(mask);
 ind = randi(length(locs), [1,numPoints]);
 [ys,xs] = ind2sub(size(mask),locs(ind));
+ys = ys';
+xs = xs';
+end
+
+function [xs, ys] = getPixelSamplePatch(mask, numPoints)
+% use 3x3 patch
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+numCenters = round(numPoints/7); % 补偿一点由于重叠导致的点不够
+locs = find(mask);
+ind = randi(length(locs), [1,numCenters]);
+[ys,xs] = ind2sub(size(mask),locs(ind));
+ys = [ys-1; ys-1; ys-1; ys; ys; ys; ys+1; ys+1; ys+1];
+xs = [xs-1; xs; xs+1; xs-1; xs; xs+1; xs-1; xs; xs+1];
+inliers = (xs>0 & xs<size(mask,2)) & (ys>0 & ys<size(mask,1));
+ys = ys(inliers);
+xs = xs(inliers);
+newInd = sub2ind(size(mask), ys, xs);
+newInd = unique(newInd);
+inliersInd = mask(newInd)==1;
+newInd = newInd(inliersInd);
+[ys,xs] = ind2sub(size(mask),locs(newInd));
+
 ys = ys';
 xs = xs';
 end

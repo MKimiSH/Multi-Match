@@ -1,0 +1,1 @@
+function [goodConfigs, configClassList, numClasses] = FindGoodInitConfigs(img, tpl, M, initConfigs, matchParams);

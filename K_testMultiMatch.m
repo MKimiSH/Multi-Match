@@ -16,7 +16,7 @@ tpl = im2double(tpl);
 
 % MultiMatch run
 params = [];
-[affines, scores, mConfigs] = K_MultiMatch(img, tpl, params);
+[affines, scores, mConfigs] = K_MultiMatchRound(img, tpl, params);
 
 % bestTransMat = affines(1).tdata.T';
 optMat = [];

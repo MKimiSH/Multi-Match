@@ -1,4 +1,4 @@
-function [affines, scores, matchConfigs] = K_MultiMatch(img, tpl, params)
+function [affines, scores, matchConfigs] = K_MultiMatchRound(img, tpl, params)
 % Input: I, input image; T, template for matching
 % Output: AA, array of Affine transformations; scores, corresponding match score for each affine
 % 1. Downsample _I_ and _T_ w.r.t. some rules (same scale or to a proper scale and then adjust the scale range).
