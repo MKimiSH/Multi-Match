@@ -167,22 +167,75 @@ void mexFunction(int nlhs, mxArray *plhs[],
         double* ptrVals = valsI1;
         int* ptrXsc = xs_centered;
         int* ptrYsc = ys_centered;
-   
-		for (int j = 0; j < numPoints ; j++) {
-			targetPoint_x = int(a11*(*ptrXsc) + a12*(*ptrYsc) + tmp1); // includes rounding
-			targetPoint_y = int(a21*(*ptrXsc) + a22*(*ptrYsc) + tmp2); // includes rounding
+		if (!usePhotometrics){
+			for (int j = 0; j < numPoints; j++) {
+				targetPoint_x = int(a11*(*ptrXsc) + a12*(*ptrYsc) + tmp1); // includes rounding
+				targetPoint_y = int(a21*(*ptrXsc) + a22*(*ptrYsc) + tmp2); // includes rounding
 
-			int baseInd = vecLen*((targetPoint_y - 1)*w2 + targetPoint_x - 1);
-			for (int k = 0; k < vecLen ; k++) {
-				targetInd = baseInd + k; // -1 is for c
-				score += (fabs((*ptrVals) - img2[targetInd]));
+				int baseInd = vecLen*((targetPoint_y - 1)*w2 + targetPoint_x - 1);
+				for (int k = 0; k < vecLen; k++) {
+					targetInd = baseInd + k; // -1 is for c
+					score += (fabs((*ptrVals) - img2[targetInd]));
 
-				ptrVals++;
+					ptrVals++;
+				}
+
+				ptrXsc++;
+				ptrYsc++;
 			}
-
-			ptrXsc++;
-			ptrYsc++;
 		}
+		else { // usePhotometrics
+			double sumXiYi = 0; double sumXi = 0; double sumYi = 0;
+			double sumXiSqrd = 0; double sumYiSqrd = 0; double Xi, Yi;
+
+			for (int j = 0; j < numPoints; j++) {
+				targetPoint_x = int(a11*(*ptrXsc) + a12*(*ptrYsc) + tmp1); // includes rounding
+				targetPoint_y = int(a21*(*ptrXsc) + a22*(*ptrYsc) + tmp2); // includes rounding
+				int baseInd = vecLen*((targetPoint_y - 1)*w2 + targetPoint_x - 1);
+				for (int k = 0; k < vecLen; k++) {
+					targetInd = baseInd + k; // -1 is for c
+					score += (fabs((*ptrVals) - img2[targetInd]));
+
+					ptrVals++;
+				}
+				Xi = (*ptrVals);
+				// Yi = img2[targetInd];
+				xs_target[j] = Xi;
+				ys_target[j] = Yi;
+
+				//                                 sumXiYi += Xi*Yi;
+				sumXi += Xi;
+				sumYi += Yi;
+				sumXiSqrd += (Xi*Xi);
+				sumYiSqrd += (Yi*Yi);
+				ptrVals++;
+				ptrXsc++;
+				ptrYsc++;
+			}
+			// old score based on correlation
+			//                         score = numPoints*sumXiYi-sumXi*sumYi;
+			//                         score /= (0.00001 + sqrt(numPoints*sumXiSqrd - sumXi*sumXi) * sqrt(numPoints*sumYiSqrd - sumYi*sumYi) );
+			//                         score  = (1-score)/2;
+			// 			score *= numPoints;
+			// new score, based on normalizing mean and std of each of the signals
+			double epsilon = 0.0000001;
+			sigX = sqrt((sumXiSqrd - (sumXi*sumXi) / numPoints) / numPoints) + epsilon;
+			sigY = sqrt((sumYiSqrd - (sumYi*sumYi) / numPoints) / numPoints) + epsilon;
+			meanX = sumXi / numPoints;
+			meanY = sumYi / numPoints;
+			double sigXoversigY = sigX / sigY;
+
+			// Variable that stores a sum used repeatadly in the computation: -meanX+sigXoversigY*meanY
+			double faster = -meanX + sigXoversigY*meanY;
+
+			for (int j = 0; j < numPoints; j++) {
+				//                       score += fabs( (xs_target[j]-meanX)/sigX - (ys_target[j]-meanY)/sigY);
+				//                                score += fabs( (xs_target[j]-meanX) - sigX*(ys_target[j]-meanY)/sigY);
+				//                                score += fabs( (xs_target[j]-meanX) - sigXoversigY*(ys_target[j]-meanY));
+				score += fabs(xs_target[j] - sigXoversigY*ys_target[j] + faster);
+			}
+		}
+
 
 		distances[i] = score/(numPoints*vecLen);
 	}

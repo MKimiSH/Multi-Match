@@ -15,9 +15,6 @@ function [affines, scores, matchConfigs] = K_MultiMatchDBSCAN(img, tpl, params)
 %% 0. Init
 [BBSParams, matchParams] = CheckAllParams(params);
 
-affines = [];
-scores = [];
-matchConfigs = [];
 
 %% 1. Downsample _I_ and _T_ w.r.t. some rules
 [img, tpl, IResize, TResize] = AdjustSize(img, tpl, BBSParams.pz);
@@ -36,28 +33,22 @@ szT = size(tpl);
 
 [goodConfigs, configClassList, numClasses] = FindGoodInitConfigs(img, tpl, M, initConfigs, matchParams);
 %% 4. Search for the 1st match _A1_.
-% matchRound = 1;
-% fprintf('First match:\n');
-% [A, score, config, accept] = FindOneMatch(img, tpl, M, initConfigs, matchParams);
-% config
-% fprintf('Match #%d score (distance) = %.4f\n\n', matchRound, score);
-% % A is not a matrix, it is a struct!
-% if accept == 0
-%     fprintf('First match score (%.4f) too low, halt!\n', score);
-%     return;
-% else
-%     affines = [affines, A];
-%     scores = [scores, score];
-%     matchConfigs = [matchConfigs; config];
-% end
-
 %% 5. Set _M(A1(T))=0_ and search for the 2nd match, and so on.
 curAccept = 1;
-matchRound = matchRound + 1;
-while(curAccept && matchRound<=8)
-    fprintf('Match #%d:\n', matchRound);
+matchRound = 1;
+affines = [];
+scores = zeros(numClasses, 1);
+matchConfigs = zeros(numClasses, 6);
+% matchRound = matchRound + 1;
+A = [];
+deltaFact = 1.511;
+while(curAccept && matchRound<=5)
+    fprintf('Match #%d, %d goodConfigs in this class: \n', matchRound, nnz(configClassList == matchRound));
+    initGoodConfigs = goodConfigs(configClassList == matchRound, :);
+    curConfigs = ExpandConfigsRandom(initGoodConfigs, matchParams.steps, 1, 80, deltaFact);
+    curConfigs = BoundConfigsTrSc(curConfigs, matchParams.bounds);
     [M, initConfigs] = MaskNewMatch(M, tpl, initConfigs, A);
-    [A, score, config, accept] = FindOneMatch(img, tpl, M, initConfigs, matchParams, scores); % scores can be used as threshold
+    [A, score, config, accept] = FindOneMatch(img, tpl, M, curConfigs, matchParams, scores); % scores can be used as threshold
     curAccept = accept;
     config
     fprintf('Match #%d score (distance) = %.4f\n\n', matchRound, score);
@@ -65,8 +56,8 @@ while(curAccept && matchRound<=8)
         fprintf('Stop at match #%d!\n', matchRound);
     else
         affines = [affines, A];
-        scores = [scores, score];
-        matchConfigs = [matchConfigs; config];
+        scores(matchRound) = score;
+        matchConfigs(matchRound, :) = config;
     end
     matchRound = matchRound + 1;
 end

@@ -194,6 +194,7 @@ while (1)
                                 expandedConfigs = ExpandConfigsFull(goodConfigs,steps,level,deltaFact);
                 end
                 configs = [goodConfigs ; expandedConfigs];
+                configs = BoundConfigsTrSc(configs, bounds);
                 configs = MaskOutlierConfigs(configs, mask);
         end
         

@@ -1,6 +1,10 @@
 function [mask, configs] = MaskNewMatch(mask, tpl, configs, aff)
 % Delete the points in _mask_ and _configs_ that belong to the transformed _tpl_ by _aff_
 
+if(isempty(aff))
+    return
+end
+
 tmask = ones(size(tpl,1), size(tpl,2)); % 也许可以不全mask掉，可以只mask一部分（如中心部分）。
 [h, w] = size(mask);
 [th, tw] = size(tmask);
