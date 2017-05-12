@@ -105,7 +105,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		//if (i%100==0)
 		//	mexPrintf("%d,%d,%d\n",k,kk,kkk);
 		insiders[i] = k;
-	}		
+	}
 
 }
 //

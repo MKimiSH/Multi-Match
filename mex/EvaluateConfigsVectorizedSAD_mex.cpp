@@ -2,9 +2,6 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
-#include <assert.h>
-#include <stdlib.h>
-
 
 #ifndef max
 #define max( a, b ) ( ((a) > (b)) ? (a) : (b) )
@@ -14,7 +11,6 @@
 #define min( a, b ) ( ((a) < (b)) ? (a) : (b) )
 #endif
 
-// Evaluate configs with NCC!!
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[]) {
     // parameters
@@ -29,9 +25,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     double *configs;
     int *xs, *ys;
     
-    // Should we use photometrics? 
-	// No in NCC!
-	int usePhotometrics = 0;
+    // Should we use photometrics?
+    int usePhotometrics;
     
     // helper variables
     int *xs_centered, *ys_centered;
@@ -46,12 +41,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     double meanX;
     double meanY;
 
-	// 先对每个通道计算NCC得分，最后平均每个通道
-	double* vecMeanX;
-	double* vecMeanY;
-	double* vecSigX;
-	double* vecSigY;
-	double* vecScore;
     
     // output variables
     double *distances;
@@ -111,13 +100,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     double* xs_target = (double *)malloc(numPoints*sizeof(double));
     double* ys_target = (double *)malloc(numPoints*sizeof(double));
     
-	// 分配vecMean和vecSig空间
-	vecMeanX = (double*)malloc(vecLen * sizeof(double));
-	vecMeanY = (double*)malloc(vecLen * sizeof(double));
-	vecSigX = (double*)malloc(vecLen * sizeof(double));
-	vecSigY = (double*)malloc(vecLen * sizeof(double));
-	vecScore = (double*)malloc(vecLen * sizeof(double));
-
+    
     /* Retrieve the input data */
     img1 = mxGetPr(prhs[0]);
     double* tmp_img2 = mxGetPr(prhs[1]);
@@ -125,12 +108,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
     xs = (int*)mxGetPr(prhs[3]);
     ys = (int*)mxGetPr(prhs[4]);
     usePhotometrics = mxGetScalar(prhs[5]);
-	assert(usePhotometrics == 0); //Don't use photometrics! NCC already handles it
     // img2 is of height 3*img2 (this padding is for not needing to check bounds)
-	img2 = (double*)malloc(5 * h2*w2*vecLen * sizeof(double));
-	memset(img2, 2, 5 * h2*w2*vecLen * sizeof(double));
-	memcpy(img2 + 2 * h2*w2*vecLen, tmp_img2, h2*w2*vecLen * sizeof(double));
-    
+    img2 = (double*)malloc(5*h2*w2*vecLen*sizeof(double));
+    memset(img2, 2, 5*h2*w2*vecLen*sizeof(double));
+    memcpy(img2+2*h2*w2*vecLen, tmp_img2, h2*w2*vecLen*sizeof(double));
+    //
     
     int cN = mxGetN(prhs[2]);
     int cM = mxGetM(prhs[2]);
@@ -185,51 +167,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
         double* ptrVals = valsI1;
         int* ptrXsc = xs_centered;
         int* ptrYsc = ys_centered;
-
-		//清零
-		for (int k = 0; k < vecLen; k++) {
-			vecMeanX[k] = 0;
-			vecMeanY[k] = 0;
-			vecScore[k] = 0;
-			vecSigX[k] = 0;
-			vecSigY[k] = 0;
-		}
-
-		// 先计算Mean和Sig
-		for (int j = 0; j < numPoints; j++) {
-			targetPoint_x = int(a11*(*ptrXsc) + a12*(*ptrYsc) + tmp1); // includes rounding
-			targetPoint_y = int(a21*(*ptrXsc) + a22*(*ptrYsc) + tmp2); // includes rounding
-
-			int baseInd = vecLen*((targetPoint_y - 1)*w2 + targetPoint_x - 1);
-			for (int k = 0; k < vecLen; k++) {
-				targetInd = baseInd + k; // -1 is for c
-				vecMeanX[k] += *ptrVals;
-				vecSigX[k] += (*ptrVals)*(*ptrVals);
-				vecMeanY[k] += img2[targetInd];
-				vecSigY[k] += img2[targetInd] * img2[targetInd];
-
-				ptrVals++;
-			}
-
-			ptrXsc++;
-			ptrYsc++;
-		}
-		for (int k = 0; k < vecLen; k++) {
-			vecMeanX[k] /= numPoints;
-			vecMeanY[k] /= numPoints;
-			vecSigX[k] = sqrt(vecSigX[k] / numPoints - vecMeanX[k] * vecMeanX[k]); //E(X^2) - E^2(X)
-			vecSigY[k] = sqrt(vecSigY[k] / numPoints - vecMeanY[k] * vecMeanY[k]);
-		}
-
-		if (i % 100000 == 0) {
-			printf("means[0]: %.4f, %.4f\n", vecMeanX[0], vecMeanY[0]);
-			printf("stds[0]: %.4f, %.4f\n", vecSigX[0], vecSigY[0]);
-		}
-		// 指针复位，计算NCC得分
-		ptrVals = valsI1;
-		ptrXsc = xs_centered;
-		ptrYsc = ys_centered;
-		double xval = 0, yval = 0;
 		if (!usePhotometrics){
 			for (int j = 0; j < numPoints; j++) {
 				targetPoint_x = int(a11*(*ptrXsc) + a12*(*ptrYsc) + tmp1); // includes rounding
@@ -237,10 +174,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 				int baseInd = vecLen*((targetPoint_y - 1)*w2 + targetPoint_x - 1);
 				for (int k = 0; k < vecLen; k++) {
-					xval = *ptrVals;
-					yval = img2[targetInd];
 					targetInd = baseInd + k; // -1 is for c
-					vecScore[k] += yval * (xval - vecMeanX[k]);
+					score += (fabs((*ptrVals) - img2[targetInd]));
 
 					ptrVals++;
 				}
@@ -248,17 +183,61 @@ void mexFunction(int nlhs, mxArray *plhs[],
 				ptrXsc++;
 				ptrYsc++;
 			}
-			for (int k = 0; k < vecLen; k++) {
-				vecScore[k] /= numPoints * (vecSigX[k] * vecSigY[k] + 1e-7);
-				score += vecScore[k];
+		}
+		else { // usePhotometrics
+			double sumXiYi = 0; double sumXi = 0; double sumYi = 0;
+			double sumXiSqrd = 0; double sumYiSqrd = 0; double Xi, Yi;
+
+			for (int j = 0; j < numPoints; j++) {
+				targetPoint_x = int(a11*(*ptrXsc) + a12*(*ptrYsc) + tmp1); // includes rounding
+				targetPoint_y = int(a21*(*ptrXsc) + a22*(*ptrYsc) + tmp2); // includes rounding
+				int baseInd = vecLen*((targetPoint_y - 1)*w2 + targetPoint_x - 1);
+				for (int k = 0; k < vecLen; k++) {
+					targetInd = baseInd + k; // -1 is for c
+					score += (fabs((*ptrVals) - img2[targetInd]));
+
+					ptrVals++;
+				}
+				Xi = (*ptrVals);
+				// Yi = img2[targetInd]; 我感觉这行注掉就是说，我这方法不行，别用。。
+				xs_target[j] = Xi;
+				ys_target[j] = Yi;
+
+				//                                 sumXiYi += Xi*Yi;
+				sumXi += Xi;
+				sumYi += Yi;
+				sumXiSqrd += (Xi*Xi);
+				sumYiSqrd += (Yi*Yi);
+				ptrVals++;
+				ptrXsc++;
+				ptrYsc++;
 			}
-			if (i % 100000 == 0) {
-				printf("scores[0:2]: %.4f, %.4f, %.4f\n", vecScore[0], vecScore[1], vecScore[2]);
+			// old score based on correlation
+			//                         score = numPoints*sumXiYi-sumXi*sumYi;
+			//                         score /= (0.00001 + sqrt(numPoints*sumXiSqrd - sumXi*sumXi) * sqrt(numPoints*sumYiSqrd - sumYi*sumYi) );
+			//                         score  = (1-score)/2;
+			// 			score *= numPoints;
+			// new score, based on normalizing mean and std of each of the signals
+			double epsilon = 0.0000001;
+			sigX = sqrt((sumXiSqrd - (sumXi*sumXi) / numPoints) / numPoints) + epsilon;
+			sigY = sqrt((sumYiSqrd - (sumYi*sumYi) / numPoints) / numPoints) + epsilon;
+			meanX = sumXi / numPoints;
+			meanY = sumYi / numPoints;
+			double sigXoversigY = sigX / sigY;
+
+			// Variable that stores a sum used repeatadly in the computation: -meanX+sigXoversigY*meanY
+			double faster = -meanX + sigXoversigY*meanY;
+
+			for (int j = 0; j < numPoints; j++) {
+				//                       score += fabs( (xs_target[j]-meanX)/sigX - (ys_target[j]-meanY)/sigY);
+				//                                score += fabs( (xs_target[j]-meanX) - sigX*(ys_target[j]-meanY)/sigY);
+				//                                score += fabs( (xs_target[j]-meanX) - sigXoversigY*(ys_target[j]-meanY));
+				score += fabs(xs_target[j] - sigXoversigY*ys_target[j] + faster);
 			}
-			score /= vecLen;
 		}
 
-		distances[i] = (1 - score) / 2;
+
+		distances[i] = score/(numPoints*vecLen);
 	}
     
     /* Free the allocated arrays */

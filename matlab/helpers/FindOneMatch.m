@@ -114,7 +114,7 @@ while (1)
             distances = EvaluateConfigs_mex(I1',I2',matrixConfigs_mex,int32(xs),int32(ys),int32(photometricInvariance));
             fprintf('----- Evaluate Configs grayscale, with %d configs -----\n',size(configs,1));
         else
-            distances = EvaluateConfigsVectorized_mex(permute(I1,[3,2,1]),permute(I2,[3,2,1]),matrixConfigs_mex,int32(xs),int32(ys),int32(photometricInvariance));
+            distances = EvaluateConfigsVectorizedSAD_mex(permute(I1,[3,2,1]),permute(I2,[3,2,1]),matrixConfigs_mex,int32(xs),int32(ys),int32(photometricInvariance));
             fprintf('----- Evaluate Configs vectorized, with %d configs -----\n',size(configs,1));
         end
         

@@ -75,7 +75,7 @@ txty_steps(:,2) = ty_steps(row);
 ntxty_steps = nnz(txtymask);
 
 %% Prepare other configs, r2, sx, sy, r1
-% Rotations ignore the user selected range here - it is handles in FindBestTransformation
+% Rotations ignore the user selected range here - it is handled in FindBestTransformation
 r_steps = -pi : steps.r : pi; % no padding since it is a cyclic range
 s_steps = bounds.s(1) : steps.s : bounds.s(2) + 0.5*steps.s; % 'pad' at end of range with an extra sample
 if (steps.s == 0)

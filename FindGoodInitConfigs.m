@@ -117,7 +117,7 @@ if (isGrayscale)
     distances = EvaluateConfigs_mex(I1',I2',matrixConfigs_mex,int32(xs),int32(ys),int32(photometricInvariance));
     fprintf('----- Evaluate Configs grayscale, with %d configs -----\n',size(configs,1));
 else
-    distances = EvaluateConfigsVectorized_mex(permute(I1,[3,2,1]),permute(I2,[3,2,1]),matrixConfigs_mex,int32(xs),int32(ys),int32(photometricInvariance));
+    distances = EvaluateConfigsVectorizedSAD_mex(permute(I1,[3,2,1]),permute(I2,[3,2,1]),matrixConfigs_mex,int32(xs),int32(ys),int32(photometricInvariance));
     fprintf('----- Evaluate Configs vectorized, with %d configs -----\n',size(configs,1));
 end
 
@@ -135,7 +135,8 @@ fprintf('EvaluateConfigs time: %.4fs\n', totTime);
 % 3] choose the 'surviving' configs and delta for next round
 
 [goodConfigs,goodConfigsDist, ~,~,~,orig_percentage,thresh] = ...
-    GetGoodConfigsByDistance(configs,bestDist,newDelta,distances,bestGridVec);
+    GetGoodConfigsByDistance_InitRound(configs,bestDist,newDelta,distances,bestGridVec);
+
 
 numGoodConfigs = size(goodConfigs,1);
 
@@ -193,11 +194,12 @@ end
 
 
 function [goodConfigs,goodConfigsDist, tooHighPercentage,extremelyHighPercentage,veryLowPercentage,orig_percentage, thresh] = ...
-    GetGoodConfigsByDistance(configs,bestDist,newDelta,distances,bestGridVec)
+    GetGoodConfigsByDistance_InitRound(configs,bestDist,newDelta,distances,bestGridVec)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % targetNum = 20000;
 % thresh = bestDist + newDelta/3;
-thresh = bestDist + GetThreshPerDelta(newDelta);
+% thresh = bestDist + GetThreshPerDelta(newDelta);
+thresh = quantile(distances, .001);
 goodConfigs = configs(distances <= thresh, :); % bestDist + levelPrecision,:);
 goodConfigsDist = distances(distances <= thresh);
 numGoodConfigs = size(goodConfigs,1);

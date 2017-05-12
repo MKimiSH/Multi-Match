@@ -1,4 +1,4 @@
-function [affines, scores, matchConfigs] = K_MultiMatchDBSCAN(img, tpl, params)
+function [affines, scores, matchConfigs] = K_MultiMatchDBSCAN(img_in, tpl_in, params)
 % Use DBSCAN to first generate several good _configs_ clusters and then
 % process them one by one (expand--evaluate--expand--...).
 % Input: I, input image; T, template for matching
@@ -14,40 +14,112 @@ function [affines, scores, matchConfigs] = K_MultiMatchDBSCAN(img, tpl, params)
 % 暂时不考虑mask！
 %% 0. Init
 [BBSParams, matchParams] = CheckAllParams(params);
-
+maxMatchRounds = 10;
+useBigImages = 0;
 
 %% 1. Downsample _I_ and _T_ w.r.t. some rules
-[img, tpl, IResize, TResize] = AdjustSize(img, tpl, BBSParams.pz);
+[img, tpl, IResize, TResize] = AdjustSize(img_in, tpl_in, BBSParams.pz);
+resizeFactor = IResize/TResize;
 matchParams.resizeFactor = IResize/TResize;
+matchParams.useBigImages = useBigImages;
 
 %% 2. Use BBS to approximately locate possible matches. Generate a mask _M_
 [M] = BBSPreprocess(img, tpl, BBSParams);
-img = MakeOdd(img);
-tpl = MakeOdd(tpl);
-M = MakeOdd(M);
-szI = size(img);
-szT = size(tpl);
+
+if useBigImages
+    img = MakeOdd(img_in);
+    tpl = MakeOdd(tpl_in);
+    szI = size(img);
+    szT = size(tpl);
+    M = imresize(M, [szI(1), szI(2)]);
+else
+    szI = size(img);
+    szT = size(tpl);
+end
+
+%% 2.5 Use SURF features to further restrain the rotation and scale search range
+% the high-resolution version of the images are needed to get more features
+[restrictedSearchRange, resM, scaleRotRange] = SearchRangeFromFeatureVoting(img_in, tpl_in, M); 
+matchParams.searchRangeByFeature = restrictedSearchRange;
+if ~isempty(scaleRotRange)
+    if useBigImages
+        matchParams.searchRange.minScale = scaleRotRange(:,1);
+        matchParams.searchRange.maxScale = scaleRotRange(:,2);
+    else
+        matchParams.searchRange.minScale = scaleRotRange(:,1) * matchParams.resizeFactor;
+        matchParams.searchRange.maxScale = scaleRotRange(:,2) * matchParams.resizeFactor;
+    end
+    matchParams.searchRange.minRotation = scaleRotRange(:,3);
+    matchParams.searchRange.maxRotation = scaleRotRange(:,4);
+end
+
 %% 3. Generate configs for searching.
 % M = ones(size(M)); % debug
 [initConfigs, gridSize, matchParams] = InitializeConfigs(M, matchParams, szI, szT);
+% 可以先initialize所有configs，但先根据feature得到的结果来搜索，用搜索结果去mask这些initConfigs。
 
-[goodConfigs, configClassList, numClasses] = FindGoodInitConfigs(img, tpl, M, initConfigs, matchParams);
-%% 4. Search for the 1st match _A1_.
-%% 5. Set _M(A1(T))=0_ and search for the 2nd match, and so on.
+%% 4. Search for matches guided by features
 curAccept = 1;
 matchRound = 1;
 affines = [];
-scores = zeros(numClasses, 1);
-matchConfigs = zeros(numClasses, 6);
+scores = zeros(maxMatchRounds, 1);
+matchConfigs = zeros(maxMatchRounds, 6);
 % matchRound = matchRound + 1;
 A = [];
 deltaFact = 1.511;
-while(curAccept && matchRound<=5)
+optMat = [];
+% restrictedSearchRange = [];
+for i = 1:size(restrictedSearchRange,1)
+    
+    [M, initConfigs] = MaskNewMatch(M, tpl, initConfigs, A);
+    
+    featSR = restrictedSearchRange(i,:);
+    if ~useBigImages
+        featSR(1:2) = featSR(1:2) * resizeFactor;
+        featSR(5:8) = featSR(5:8) * IResize;
+    end
+    sr.minScale = featSR(1); % * resizeFactor;
+    sr.maxScale = featSR(2); % * resizeFactor;
+    sr.minRotation = featSR(3);
+    sr.maxRotation = featSR(4);
+    sr.minTx = featSR(5); % * IResize;
+    sr.maxTx = featSR(6); % * IResize;
+    sr.minTy = featSR(7); % * IResize;
+    sr.maxTy = featSR(8); % * IResize;
+    curMatchParams = matchParams;
+    curMatchParams.searchRange = sr;
+    
+    [curInitConfigs, curGridSize, curMatchParams] = InitializeConfigs(M, curMatchParams, szI, szT);
+    
+    [A, score, config, accept] = FindOneMatch(img, tpl, M, curInitConfigs, curMatchParams, scores); % scores can be used as threshold
+    
+    curAccept = accept;
+    config
+    fprintf('Match #%d score (distance) = %.4f\n\n', matchRound, score);
+    if(~curAccept)
+        fprintf('Stop at match #%d!\n', matchRound);
+    else
+        affines = [affines, A];
+        scores(matchRound) = score;
+        matchConfigs(matchRound, :) = config;
+        
+        [optError,fullError,overlapError] = MatchingResult(tpl,img,A.tdata.T',optMat,sprintf('example %d', matchRound));
+        fprintf('example %d - optError: %.4f (%.2f GLs), fullError: %.4f (%.2f GLs), overlapError: %.1f%%\n',...
+            matchRound, optError,256*optError,fullError,256*fullError,100*overlapError);
+        matchRound = matchRound + 1;
+    end
+    
+end
+
+%% 5. Set _M(A1(T))=0_ and search for the 2nd match, and so on.
+[goodConfigs, configClassList, numClasses] = FindGoodInitConfigs(img, tpl, M, initConfigs, matchParams);
+
+while(curAccept && matchRound<=maxMatchRounds)
     fprintf('Match #%d, %d goodConfigs in this class: \n', matchRound, nnz(configClassList == matchRound));
+    [M, initConfigs] = MaskNewMatch(M, tpl, initConfigs, A);
     initGoodConfigs = goodConfigs(configClassList == matchRound, :);
     curConfigs = ExpandConfigsRandom(initGoodConfigs, matchParams.steps, 1, 80, deltaFact);
     curConfigs = BoundConfigsTrSc(curConfigs, matchParams.bounds);
-    [M, initConfigs] = MaskNewMatch(M, tpl, initConfigs, A);
     [A, score, config, accept] = FindOneMatch(img, tpl, M, curConfigs, matchParams, scores); % scores can be used as threshold
     curAccept = accept;
     config
@@ -58,6 +130,10 @@ while(curAccept && matchRound<=5)
         affines = [affines, A];
         scores(matchRound) = score;
         matchConfigs(matchRound, :) = config;
+        
+        [optError,fullError,overlapError] = MatchingResult(tpl,img,A.tdata.T',optMat,sprintf('example %d', matchRound));
+        fprintf('example %d - optError: %.4f (%.2f GLs), fullError: %.4f (%.2f GLs), overlapError: %.1f%%\n',...
+            matchRound, optError,256*optError,fullError,256*fullError,100*overlapError);
     end
     matchRound = matchRound + 1;
 end
