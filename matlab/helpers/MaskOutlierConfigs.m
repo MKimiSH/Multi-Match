@@ -1,4 +1,4 @@
-function [configs] = MaskOutlierConfigs(configs, mask)
+function [configs, distances] = MaskOutlierConfigs(configs, mask, distances)
 % Check whether (the translations of) _configs_ are within _mask_
 
 [h, w] = size(mask);
@@ -14,11 +14,17 @@ withinArea = (rtx > 0) & (rtx <= w) ...
 rtx = rtx(withinArea==1);
 rty = rty(withinArea==1);
 configs = configs(withinArea, :);
+if exist('distances', 'var')
+    distances = distances(withinArea);
+end
 
 indQuery = sub2ind(size(mask), rty, rtx);
 
 withinMask = mask(indQuery) == 1;
 % withinMaskInd = find(withinMask);
 configs = configs(withinMask, :);
+if exist('distances', 'var')
+    distances = distances(withinMask);
+end
 
 end

@@ -1,9 +1,9 @@
-function [mask] = BBSPreprocess(img, tpl, params)
+function [mask, t] = BBSPreprocess(img, tpl, params)
 % Use Best Buddy Similarity to approximately find the target search region
 % I don't know to what extent can it handle rotation. Just a try.
 
 [ih, iw, ~] = size(img);
-[th, th, ~] = size(tpl);
+[th, tw, ~] = size(tpl);
 szI = size(img);
 szT = size(tpl);
 gamma = params.gamma;
@@ -21,7 +21,7 @@ fprintf('BBS computed in %.2f sec (|I| = %dx%d , |T| = %dx%d)\n',t,szI(1:2),szT(
 meanBBS = mean(BBS(:), 'omitnan');
 stdBBS = std(BBS(:), 'omitnan');
 maxBBS = max(BBS(:), [], 'omitnan');
-threshold = meanBBS + 1.5*stdBBS;
+threshold = meanBBS + 1.05*stdBBS;
 if(maxBBS < threshold)
     threshold = threshold - 0.5*stdBBS;
 end

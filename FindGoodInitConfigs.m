@@ -1,4 +1,4 @@
-function [goodConfigs, configClassList, numClasses] = FindGoodInitConfigs(img, tpl, mask, configs, params)
+function [goodConfigs, configClassList, numClasses, allDistances, configs, totTime] = FindGoodInitConfigs(img, tpl, mask, configs_in, params, useClustering, allDistances)
 % Use FastMatch-like method to find good _configs_
 % Then use DBSCAN to cluster them for multiple object detection
 % DBSCAN only use _tx, ty_ for clustering.
@@ -6,6 +6,7 @@ function [goodConfigs, configClassList, numClasses] = FindGoodInitConfigs(img, t
 %% verify input image types
 I2 = img;
 I1 = tpl;
+configs = configs_in;
 szI = size(img);
 szT = size(tpl);
 if ( ~strcmp(class(I1),'double') || ~strcmp(class(I2),'double')) %#ok<STISA>
@@ -65,6 +66,19 @@ perRoundOrig_percentage = [];
 bestGridVec = [];
 newDelta = delta;
 totTime = 0;
+
+
+if exist('allDistances', 'var') && ~useClustering %% 已经算过了，只需要找到GoodConfigs就好了
+    fprintf('->>>>>>>Get new Good  InitConfigs!\n');
+    [configs, distances] = MaskOutlierConfigs(configs, mask, allDistances);
+    bestDist = min(allDistances);
+    [goodConfigs,goodConfigsDist, ~,~,~,orig_percentage,thresh] = ...
+        GetGoodConfigsByDistance_InitRound(configs,bestDist,newDelta,distances,bestGridVec);
+    numGoodConfigs = size(goodConfigs, 1);
+    configClassList = ones(numGoodConfigs, 1);
+    numClasses = 1;
+    return;
+end
 
 fprintf('Use FastMatch+DBSCAN to find goodConfigs!\n\n');
 level = level + 1;
@@ -137,16 +151,21 @@ fprintf('EvaluateConfigs time: %.4fs\n', totTime);
 [goodConfigs,goodConfigsDist, ~,~,~,orig_percentage,thresh] = ...
     GetGoodConfigsByDistance_InitRound(configs,bestDist,newDelta,distances,bestGridVec);
 
-
 numGoodConfigs = size(goodConfigs,1);
 
 % fprintf('$$$ bestDist = %.3f\n',bestDist);
 fprintf('$$ numGoodConfigs: %d (out of %d), orig percentage: %.4f, bestDist: %.4f, thresh: %.4f\n',...
     size(goodConfigs,1), size(configs,1), orig_percentage, bestDist, thresh);
 
-epsCl = max(steps.tx, steps.ty); % eps for DBSCAN
-kCl = 5; % k for DBSCAN
-[configClassList, numClasses] = ClusterGoodConfigsByTranslation(goodConfigs(:, 1:2), kCl, epsCl);
+if useClustering
+    epsCl = max(steps.tx, steps.ty); % eps for DBSCAN
+    kCl = 5; % k for DBSCAN
+    [configClassList, numClasses] = ClusterGoodConfigsByTranslation(goodConfigs(:, 1:2), kCl, epsCl);
+else
+    configClassList = ones(numGoodConfigs, 1);
+    numClasses = 1;
+end
+allDistances = distances;
 
 % collect round stats
 % bestDists(level) = bestDist;
@@ -199,7 +218,7 @@ function [goodConfigs,goodConfigsDist, tooHighPercentage,extremelyHighPercentage
 % targetNum = 20000;
 % thresh = bestDist + newDelta/3;
 % thresh = bestDist + GetThreshPerDelta(newDelta);
-thresh = quantile(distances, .001);
+thresh = quantile(distances, .002);
 goodConfigs = configs(distances <= thresh, :); % bestDist + levelPrecision,:);
 goodConfigsDist = distances(distances <= thresh);
 numGoodConfigs = size(goodConfigs,1);

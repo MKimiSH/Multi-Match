@@ -1,4 +1,4 @@
-function [optError,fullError,overlapError] = MatchingResult(I1,I2,a,optA,prefixName,templateMask)
+function [optError,fullError,overlapError, figHandle] = MatchingResult(I1,I2,a,optA,prefixName,templateMask)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if (~exist('templateMask','var'))
@@ -150,7 +150,7 @@ transI3mask = transI3 > 0.5;
 %% summarizing figure (image)
 tic
 fullscreen = get(0,'ScreenSize');
-figure()
+figHandle = figure();
 set(gcf,'Position',[0.15*fullscreen(3) 0.1*fullscreen(4) 0.8*fullscreen(3) 0.75*fullscreen(4)]);
 % GL.hh = hh;
 set(gcf,'color','w');

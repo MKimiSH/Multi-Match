@@ -16,6 +16,7 @@ function [affines, scores, matchConfigs] = K_MultiMatchDBSCAN(img_in, tpl_in, pa
 [BBSParams, matchParams] = CheckAllParams(params);
 maxMatchRounds = 10;
 useBigImages = 0;
+useClustering = 0;
 
 %% 1. Downsample _I_ and _T_ w.r.t. some rules
 [img, tpl, IResize, TResize] = AdjustSize(img_in, tpl_in, BBSParams.pz);
@@ -112,7 +113,7 @@ for i = 1:size(restrictedSearchRange,1)
 end
 
 %% 5. Set _M(A1(T))=0_ and search for the 2nd match, and so on.
-[goodConfigs, configClassList, numClasses] = FindGoodInitConfigs(img, tpl, M, initConfigs, matchParams);
+[goodConfigs, configClassList, numClasses] = FindGoodInitConfigs(img, tpl, M, initConfigs, matchParams, useClustering);
 
 while(curAccept && matchRound<=maxMatchRounds)
     fprintf('Match #%d, %d goodConfigs in this class: \n', matchRound, nnz(configClassList == matchRound));

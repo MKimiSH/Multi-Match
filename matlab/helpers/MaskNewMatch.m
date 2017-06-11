@@ -13,9 +13,9 @@ r2y = 0.5*(h-1);
 r1x = 0.5*(tw-1);
 r1y = 0.5*(th-1);
 
-[tmaskTrans, xd, yd] = imtransform(tmask, aff);
-xrange = round(xd + r2x - r1x);
-yrange = round(yd + r2y - r1y);
+[tmaskTrans, xd, yd] = imtransform(tmask, aff, 'UData', [-r1x, r1x], 'VData', [-r1y, r1y]);
+xrange = round(xd + r2x); % - (xd(2)-xd(1))/2); % 而不是 - r1x
+yrange = round(yd + r2y); % - (yd(2)-yd(1))/2); % 而不是 - r1y
 
 % border
 if(xrange(1)<=0) 

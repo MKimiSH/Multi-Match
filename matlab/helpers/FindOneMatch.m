@@ -1,8 +1,9 @@
-function [aff, score, config, accept] = FindOneMatch(img, tpl, mask, configs, params, scores)
+function [aff, score, config, accept, totTime] = FindOneMatch(img, tpl, mask, configs_in, params, scores)
 % Use FastMatch-like method to find the first match!
 %% verify input image types
 I2 = img;
 I1 = tpl;
+configs = configs_in;
 szI = size(img);
 szT = size(tpl);
 if ( ~strcmp(class(I1),'double') || ~strcmp(class(I2),'double')) %#ok<STISA>
@@ -62,6 +63,12 @@ perRoundOrig_percentage = [];
 bestGridVec = [];
 newDelta = delta;
 totTime = 0;
+restartCount = 0;
+if length(scores) >= 5
+    prevScoreThresh = mean(scores) * 1.8
+else
+    prevScoreThresh = 10000;
+end
 while (1)
         level = level + 1;
         
@@ -99,7 +106,16 @@ while (1)
 %         configs = [0 0 0 1 1 0]; % [tx,ty,r2,sx,sy,r1]
         [matrixConfigs_mex, insiders] = ...
                 Configs2Affine_mex(configs',int32(h1), int32(w1), int32(h2), int32(w2), int32(r1x), int32(r1y), int32(r2x), int32(r2y));
-        
+        if nnz(insiders) == 0
+            fprintf('No insider configs, match not found!\n');
+            aff = [];
+            score = -1;
+            config = -20000*ones(1,6);
+            accept = 0;
+            return;
+        end
+            
+            
         inBoundaryInds = find(insiders);
         matrixConfigs_mex = matrixConfigs_mex(:,inBoundaryInds);
         origNumConfigs = size(configs,1);
@@ -146,9 +162,9 @@ while (1)
 
         % 4] break conditions of Branch-and-Bound
         clear conditions
-        conditions(1) = (bestDist < 0.005); % good enough 1
-        conditions(2) = (level > 5) && (bestDist < 0.01); % good enough 2
-        conditions(3) = (level >= 20); % enough levels
+        conditions(1) = (bestDist < 0.02); % good enough 1, originally 0.005
+        conditions(2) = (level > 5) && (bestDist < 0.04); % good enough 2, originally 0.01
+        conditions(3) = (level >= 10); % enough levels, originally 20
         conditions(4) = ((level > 3) && (bestDist > mean(bestDists(level-3:level-1))*0.97)); % no improvement in last 3 rounds
         conditions(5) = ((level > 2) && (numGoodConfigs>1000) && extremelyHighPercentage ); % too high expansion rate
         conditions(6) = ((level > 3) && (numGoodConfigs>1000) && (numGoodConfigs>50*min(perRoundNumGoodConfigs))); % a deterioration in the focus
@@ -169,10 +185,20 @@ while (1)
         % 7] expand 'surviving' configs for next round
              % ('restart' = [with smaller delta] if not too many configs and not too high percentage of configs to expand)
         if (~veryLowPercentage && ... % && ...
-            ( (tooHighPercentage && (bestDist > 0.1) && ((level==1) && (origNumConfigs < 7.5*10^6)) ) || ...
-              (                     (bestDist > 0.15)  && ((level==1) && (origNumConfigs <   5*10^6)) ) ) )
+            ( (tooHighPercentage && (bestDist > 0.15) && ((level==1) && (origNumConfigs < 7.5*10^6)) ) || ...
+              (                     (bestDist > 0.2)  && ((level==1) && (origNumConfigs <   5*10^6)) ) || ...
+                                    (bestDist > prevScoreThresh && ((level==1) && (origNumConfigs <   5*10^6)) ) ) ) 
+                if(restartCount >= 7) 
+                    fprintf('Restarted for too many times, match not found!\n');
+                    aff = [];
+                    score = -1;
+                    config = -10000*ones(1,6);
+                    accept = 0;
+                    return;
+                end
                 fact = 0.9;
                 fprintf('##### RESTARTING!!! changing from delta: %.3f, to delta: %.3f\n', newDelta, newDelta*fact);
+                restartCount = restartCount + 1;
                 newDelta = newDelta*fact;
                 level = 0;
                 steps.tx = fact*steps.tx;
@@ -233,9 +259,9 @@ score = sampledError;
 aff = maketform('affine', bestTransMat');
 config = bestConfig;
 if strcmp(stage, 'first')
-    accept = score < 0.2;
+    accept = score < 0.15;
 else
-    accept = score < 0.4; % 先这样！
+    accept = score < 0.2; % 先这样！
 end
 
 return
@@ -281,9 +307,9 @@ if (isempty(goodConfigs))
         end
 end  
 
-tooHighPercentage = (orig_percentage > 0.05);
+tooHighPercentage = (orig_percentage > 0.1); % originally 0.05
 veryLowPercentage = (orig_percentage < 0.01);
-extremelyHighPercentage = (orig_percentage > 0.2);
+extremelyHighPercentage = (orig_percentage > 0.3); % originally 0.2
 
 if (~isempty(bestGridVec))
     [exists,bestGridInd] = IsMemberApprox(goodConfigs,bestGridVec,1000*eps);

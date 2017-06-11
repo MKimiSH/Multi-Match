@@ -13,10 +13,13 @@ factor = 1;
 [th, tw, ~] = size(tpl);
 
 imgFactor = sqrt(100000/(ih*iw));
-if(th*tw*imgFactor*imgFactor >= 1000)
-    tplFactor = imgFactor;
-else
+if(th*tw*imgFactor*imgFactor <= 1000)
     tplFactor = sqrt(1000/(th*tw));
+    
+elseif th*tw*imgFactor*imgFactor > 2000
+    tplFactor = sqrt(2000/(th*tw));
+else
+    tplFactor = imgFactor;
 %     factor = imgFactor/tplFactor; % scale range should multiply _factor_
 end
 

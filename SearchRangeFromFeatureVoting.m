@@ -1,10 +1,11 @@
-function [restrictedSearchRanges, resM, scaleRotRange, groups, srFromVote] = SearchRangeFromFeatureVoting(img, tpl, M)
+function [restrictedSearchRanges, resM, scaleRotRange, groups, srFromVote, time] = SearchRangeFromFeatureVoting(img, tpl, M)
 % 从img和tpl中找到匹配的SURF特征
 % 特征的位置需要在M中
 % 然后匹配特征，并进行投票
 % 投票转化为搜索范围。
 % 搜索范围不再是一个结构体，而是一串结构体。
 
+tic;
 restrictedSearchRanges = [];
 
 votes = [];
@@ -12,13 +13,18 @@ votes = [];
 [ih, iw, ~] = size(img);
 img_gray = rgb2gray(img);
 tpl_gray = rgb2gray(tpl);
-%% Detect and match SURF features in both images
-points_img = detectSURFFeatures(img_gray, 'MetricThreshold', 700);
-points_tpl = detectSURFFeatures(tpl_gray, 'MetricThreshold', 700);
 
+%% Detect and match SURF features in both images
 % use M to select inliers;
 resM = imresize(M, [ih, iw]);
-dilatedM = imdilate(resM, strel('square',15));
+% blur img_gray!
+dilatedM = imresize(imdilate(M, strel('square',5)), [ih, iw]);
+% img_blurredgray = imfilter(img_gray, fspecial('gaussian', [30 30], 3));
+% img_combgray = img_blurredgray;
+% img_combgray(dilatedM) = img_gray(dilatedM);
+
+points_img = detectSURFFeatures(img_gray, 'MetricThreshold', 800);
+points_tpl = detectSURFFeatures(tpl_gray, 'MetricThreshold', 800);
 
 isInBound = (round(points_img.Location(:,1)) > 0 & round(points_img.Location(:,1)) <= iw ...
     & round(points_img.Location(:,2)) > 0 & round(points_img.Location(:,2)) <= ih);
@@ -43,8 +49,9 @@ if isempty(indexPairs)
     scaleRotRange = [];
     groups = [];
     srFromVote = [];
+    time = toc;
     fprintf('No matching features found.\n');
-    keyboard;
+%     keyboard;
     return;
 end
 % % centering feat_tpl
@@ -56,7 +63,7 @@ end
 
 %% Calc. vote by matched features
 [th, tw, ~] = size(tpl);
-nPairs = length(indexPairs);
+nPairs = size(indexPairs, 1);
 votes = zeros(nPairs, 4); % tx, ty, s, r
 for i=1:nPairs
     fim = vpoint_img(indexPairs(i,1));
@@ -72,8 +79,9 @@ end
 srFromVote = zeros(nPairs, 8); % mins, maxs, minr, maxr, mintx, maxtx, minty, maxty
 scaleFact = 0.2;
 translateFact = 15;
-rotationFact = 0.4;
+rotationFact = 0.25;
 
+% vote: tx, ty, s, r
 mins = votes(:,3) - scaleFact;
 maxs = votes(:,3) + scaleFact;
 minr = votes(:,4) - rotationFact;
@@ -98,6 +106,7 @@ nGroups = 0;
 curGroup = 1;
 for i=1:nPairs
     nbs = nbMat(i,:);
+    nbs(1:i) = 0;
     if groups(i)>0
         groups(nbs>0) = groups(i);
     else
@@ -135,6 +144,7 @@ allmins = min(restrictedSearchRanges(:,1));
 allmaxs = max(restrictedSearchRanges(:,2));
 allminr = min(restrictedSearchRanges(:,3));
 allmaxr = max(restrictedSearchRanges(:,4));
-scaleRotRange = [allmins, allmaxs, allminr, allmaxr]
+scaleRotRange = [allmins, allmaxs, allminr, allmaxr];
 
+time = toc;
 end

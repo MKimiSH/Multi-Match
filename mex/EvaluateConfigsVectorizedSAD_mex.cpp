@@ -175,7 +175,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 				int baseInd = vecLen*((targetPoint_y - 1)*w2 + targetPoint_x - 1);
 				for (int k = 0; k < vecLen; k++) {
 					targetInd = baseInd + k; // -1 is for c
-					score += (fabs((*ptrVals) - img2[targetInd]));
+					score += (min(fabs((*ptrVals) - img2[targetInd]), 0.7));
 
 					ptrVals++;
 				}
