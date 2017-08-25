@@ -1,7 +1,7 @@
 function [configs, gridSize, params] = InitializeConfigs(mask, params, szI, szT)
 % Generate initial configs for searching
 % _configs_: tx, ty, r2, sx, sy, r1 (like FastMatch)
-% 傻了，人家是以图像中心(r2x, r2y)为原点的
+% 以图像中心(r2x, r2y)为原点
 % tpl也是以tpl中心为原点的
 
 %% init searchRange
@@ -49,10 +49,6 @@ ntx_steps = length(tx_steps);
 nty_steps = length(ty_steps);
 
 txtymask = zeros(nty_steps, ntx_steps);
-% 先写个for，上来就优化太烦了。。
-% [txgrid, tygrid] = meshgrid(tx_steps, ty_steps);
-% txgrid = round(txgrid);
-% tygrid = round(tygrid);
 
 mv_tx_steps = tx_steps + r2x; % move to center
 mv_ty_steps = ty_steps + r2y;

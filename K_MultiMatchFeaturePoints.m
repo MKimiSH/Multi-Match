@@ -38,6 +38,7 @@ matchParams.useBigImages = useBigImages;
 %% 2. Use BBS to approximately locate possible matches. Generate a mask _M_
 if(useBBS)
     [M, timeList.BBSTime] = BBSPreprocess(img, tpl, BBSParams);
+    figure, imshow(M);
 else
     M = ones(size(img, 1), size(img, 2));
 end
@@ -54,7 +55,7 @@ else
     szT = size(tpl);
 end
 
-%% 2.5 Use SURF features to further restrain the rotation and scale search range
+%% 3. Use SURF features to further restrain the rotation and scale search range
 % the high-resolution version of the images are needed to get more features
 if(useSURF)
     [restrictedSearchRange, resM, scaleRotRange, ~, ~, timeList.featureTime] = SearchRangeFromFeatureVoting(img_in, tpl_in, M);
@@ -63,12 +64,12 @@ else
     restrictedSearchRange = [];
 end
 
-%% 3. Generate configs for searching.
+%% 4. Generate configs for searching.
 % M = ones(size(M)); % debug
 [initConfigs, gridSize, matchParams] = InitializeConfigs(M, matchParams, szI, szT);
 % 可以先initialize所有configs，但先根据feature得到的结果来搜索，用搜索结果去mask这些initConfigs。
 
-%% 4. Search for matches guided by features
+%% 5. Search for matches guided by features
 curAccept = 1;
 matchRound = 1;
 nFeatMatch = 0;
@@ -109,7 +110,7 @@ for i = 1:size(restrictedSearchRange,1)
         acceptFeatureRange = [acceptFeatureRange, 0];
         continue;
     end
-    [A, score, config, accept, curtime] = FindOneMatch(img, tpl, M, curInitConfigs, curMatchParams, scores); % scores can be used as threshold
+    [A, score, config, accept, curtime] = FindOneMatch(img, tpl, M, curInitConfigs, curMatchParams, scores); 
     timeList.featureMatchTime = [timeList.featureMatchTime, curtime];
     curAccept = accept;
     acceptFeatureRange = [acceptFeatureRange, accept];
@@ -133,18 +134,19 @@ for i = 1:size(restrictedSearchRange,1)
 end
 nFeatMatch = matchRound - 1;
 
-figure, imshow(img_in); hold on
-for j = 1:length(acceptFeatureRange)
-    if(acceptFeatureRange(j))
-        rectangle('Position', [restrictedSearchRange(j,5) + size(img_in,2)/2, ...
-            restrictedSearchRange(j,7) + size(img_in,1)/2, restrictedSearchRange(j,6) - restrictedSearchRange(j,5), ...
-            restrictedSearchRange(j,8) - restrictedSearchRange(j,7) ], 'EdgeColor', 'g', 'LineWidth', 1.5);
-    else
-        rectangle('Position', [restrictedSearchRange(j,5) + size(img_in,2)/2, ...
-            restrictedSearchRange(j,7) + size(img_in,1)/2, restrictedSearchRange(j,6) - restrictedSearchRange(j,5), ...
-            restrictedSearchRange(j,8) - restrictedSearchRange(j,7) ], 'EdgeColor', 'y', 'LineWidth', 1.5);
-    end
-end
+% draw feature voting search ranges
+% figure, imshow(img_in); hold on
+% for j = 1:length(acceptFeatureRange)
+%     if(acceptFeatureRange(j))
+%         rectangle('Position', [restrictedSearchRange(j,5) + size(img_in,2)/2, ...
+%             restrictedSearchRange(j,7) + size(img_in,1)/2, restrictedSearchRange(j,6) - restrictedSearchRange(j,5), ...
+%             restrictedSearchRange(j,8) - restrictedSearchRange(j,7) ], 'EdgeColor', 'g', 'LineWidth', 1.5);
+%     else
+%         rectangle('Position', [restrictedSearchRange(j,5) + size(img_in,2)/2, ...
+%             restrictedSearchRange(j,7) + size(img_in,1)/2, restrictedSearchRange(j,6) - restrictedSearchRange(j,5), ...
+%             restrictedSearchRange(j,8) - restrictedSearchRange(j,7) ], 'EdgeColor', 'y', 'LineWidth', 1.5);
+%     end
+% end
 
 if ~isempty(scalerotRanges)
     allmins = min(scalerotRanges(:,1));
@@ -169,7 +171,7 @@ if ~isempty(scaleRotRange)
 end
 
 
-%% 5. Set _M(A1(T))=0_ and search for the 2nd match, and so on.
+%% 6. Set _M(A1(T))=0_ and search for the remaining matches.
 if(nFeatMatch >= maxMatchRounds)
     fprintf('\n!!!!!!!!ENDING because enough feature matches!!!!!!!!!!\n');
     fprintf('nFeatMatch = %d, nOtherMatch = 0\n', nFeatMatch);
@@ -178,6 +180,7 @@ end
 
 [initConfigs, gridSize, matchParams] = InitializeConfigs(M, matchParams, szI, szT);
 
+% assess initConfigs and find good ones in it to start further matching
 [goodConfigs, configClassList, numClasses, allDistances, initConfigs, initTime] = FindGoodInitConfigs(img, tpl, M, initConfigs, matchParams, useClustering);
 timeList.otherMatchTime = [timeList.otherMatchTime, initTime];
 newMatchRound = 1;
@@ -229,7 +232,7 @@ while(curAccept && matchRound<=maxMatchRounds)
 end
 nOtherMatch = matchRound - nFeatMatch - 1;
 
-%% 6. Output the result.
+%% 7. Output the result.
 % 似乎不用做什么。
 % 不对，得把大小还原回去……
 if ~useBigImages
@@ -265,6 +268,7 @@ if(~isfield(matchparams, 'searchRange')); matchparams.searchRange = []; end
 end
 
 function [affs] = RecoverResizedAffines(affs, configs, imgresize, tplresize)
+% 把用小图片找到的匹配还原成大图片的匹配
 
 configs(:, 1:2) = configs(:, 1:2) / imgresize; % tx, ty
 configs(:, 4:5) = configs(:, 4:5) / (imgresize/tplresize); % sx, sy

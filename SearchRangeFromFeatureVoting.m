@@ -26,6 +26,7 @@ dilatedM = imresize(imdilate(M, strel('square',5)), [ih, iw]);
 points_img = detectSURFFeatures(img_gray, 'MetricThreshold', 800);
 points_tpl = detectSURFFeatures(tpl_gray, 'MetricThreshold', 800);
 
+% 找到在Mask范围内的特征点
 isInBound = (round(points_img.Location(:,1)) > 0 & round(points_img.Location(:,1)) <= iw ...
     & round(points_img.Location(:,2)) > 0 & round(points_img.Location(:,2)) <= ih);
 locations = points_img.Location(isInBound,:);
@@ -61,18 +62,18 @@ end
 %     vpoint_tpl_ctrd(i).Location = vpoint_tpl_ctrd(i).Location - [(tw-1)/2, (th-1)/2];
 % end
 
-%% Calc. vote by matched features
+%% Calculate vote by matched features
 [th, tw, ~] = size(tpl);
 nPairs = size(indexPairs, 1);
 votes = zeros(nPairs, 4); % tx, ty, s, r
 for i=1:nPairs
     fim = vpoint_img(indexPairs(i,1));
     ftp = vpoint_tpl(indexPairs(i,2));
-    vote_r = fim.Orientation - ftp.Orientation;
-    vote_s = fim.Scale / ftp.Scale;
+    vote_r = fim.Orientation - ftp.Orientation; % rotation
+    vote_s = fim.Scale / ftp.Scale; % scale
     rotMat = [cos(vote_r) -sin(vote_r); sin(vote_r) cos(vote_r)];
     vote_t = fim.Location' - vote_s * (rotMat*(ftp.Location' - [(tw-1)/2, (th-1)/2]')); % Location need to be a column vector
-    vote_r = mod(vote_r + 11*pi, 2*pi) - pi;
+    vote_r = mod(vote_r + 11*pi, 2*pi) - pi; % vote_r \in [-pi, pi)
     votes(i,:) = [vote_t(1), vote_t(2), vote_s, vote_r];
 end
 %% Calc. search ranges from votes.
@@ -93,7 +94,8 @@ maxty = votes(:,2) + votes(:,3)*translateFact; % 先写个正方形吧！
 srFromVote = [mins, maxs, minr, maxr, mintx, maxtx, minty, maxty];
 
 %% Group Search Ranges
-nbMat = zeros(nPairs, nPairs); % 先只用平移吧！
+nbMat = zeros(nPairs, nPairs); % 矩形框互相覆盖就认为是相邻 
+% 先只用平移吧！
 for i=1:nPairs
     cur = srFromVote(i,:);
 %     rect = cur(5:8);
@@ -101,6 +103,7 @@ for i=1:nPairs
             | srFromVote(:,7) > cur(8) | srFromVote(:,8) <cur(7));
 end
 
+% 大致聚类，结果并不稳定（如果要稳定要用DBSCAN）
 groups = zeros(nPairs,1);
 nGroups = 0;
 curGroup = 1;
@@ -125,6 +128,7 @@ end
 nGroups = curGroup - 1;
 fprintf('......nGroups = %d\n', nGroups);
 
+% 对每个类计算搜索范围
 restrictedSearchRanges = zeros(nGroups, 8);
 for g = 1:nGroups
     cands = srFromVote(groups==g,:); %candidates
@@ -139,7 +143,7 @@ for g = 1:nGroups
     restrictedSearchRanges(g,:) = [mins, maxs, minr, maxr, mintx, maxtx, minty, maxty];
 end
 
-% scaleRotRange = zeros(1,4);
+% 整体对scale和rotation的限制
 allmins = min(restrictedSearchRanges(:,1));
 allmaxs = max(restrictedSearchRanges(:,2));
 allminr = min(restrictedSearchRanges(:,3));

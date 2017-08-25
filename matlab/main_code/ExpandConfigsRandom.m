@@ -1,5 +1,6 @@
 function expandedConfigs = ExpandConfigsRandom(configs,steps,level,npoints,deltaFact)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% refine the grid randomly (to save calculation)
 
 fact = deltaFact^level;
 halfstep_tx = steps.tx/fact;

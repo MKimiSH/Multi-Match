@@ -29,5 +29,4 @@ end
 mask = BBS > threshold;
 str = strel('disk',2); % 我也不知道要不要dilate
 mask = imdilate(mask, str);
-figure,imshow(mask);
 end
